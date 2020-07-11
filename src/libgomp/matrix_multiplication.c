@@ -202,10 +202,6 @@ int main(int argc, char *argv[]){
 	printf("      N=%d\n", n);
 	printf("      K=%d\n\n", k);
 
-        int *test_m_ptr = &m;
-        int *test_n_ptr = &n;
-        int *test_k_ptr = &k;
-
 	// Set up time vars
         struct timespec t1_start, t1_end, t2_start, t2_end, t3_start, t3_end;
         double elapsed_time;
