@@ -17,7 +17,7 @@
 #include <malloc.h>
 
 #define MAX_MAT_VALUE 100000
-#define ALIGNMENT 1024
+#define ALIGNMENT 64
 #define CHUNK 10
 
 void populateMatrix(double **matrix, int m, int n){
@@ -81,12 +81,8 @@ void ompPopulateMatrix(double **matrix, int *n_rows, int *n_cols){
 #pragma omp for schedule (static, CHUNK) 
     for (row=0; row<*n_rows; row++){
         for (col=0; col<*n_cols; col++){
-
-            // Generate random int
-            random_double = (double)rand() / MAX_MAT_VALUE;
-            
 	    // Store in matrix
-	    matrix[row][col] = random_double;
+	    matrix[row][col] = (double)rand() / (double)MAX_MAT_VALUE;
 	}
     }
 }
@@ -264,11 +260,21 @@ int main(int argc, char *argv[]){
 	int m_omp_aligned;
 	int n_omp_aligned;
 	int k_omp_aligned;
+	size_t n_col;
+	size_t k_col;
+	size_t m_row;
+	size_t n_row;
+        size_t alignment;
+
+	// Set aligned sizes
+	size_t m_aligned_row_size = ((size_t) (m * sizeof(double*)) + ALIGNMENT - 1) & (~(ALIGNMENT - 1));;
+	size_t n_aligned_row_size = ((size_t) (n * sizeof(double*)) + ALIGNMENT - 1) & (~(ALIGNMENT - 1));;
+	size_t n_aligned_col_size = ((size_t) (n * sizeof(double)) + ALIGNMENT - 1) & (~(ALIGNMENT - 1));;
+	size_t k_aligned_col_size = ((size_t) (k * sizeof(double)) + ALIGNMENT - 1) & (~(ALIGNMENT - 1));
 
         clock_gettime(CLOCK_REALTIME, &t2_start);
 
-        int alignment;
-    #pragma omp parallel private(i_omp_aligned, m_omp_aligned, n_omp_aligned, k_omp_aligned, alignment)
+    #pragma omp parallel shared(m_row, n_col, n_row, k_col, alignment) private(i_omp_aligned)
     {
 	// Do not use dynamic threading
         omp_set_dynamic(0);
@@ -278,21 +284,26 @@ int main(int argc, char *argv[]){
 	n_omp_aligned = n;
 	k_omp_aligned = k;
 
+        // Set aligned row and col sizes
+	m_row = m_aligned_row_size;
+	n_row = n_aligned_row_size;
+	n_col = n_aligned_col_size;
+	k_col = k_aligned_col_size;
+
 	// Set alignment within this block
 	alignment = ALIGNMENT;
 
 	// Initialize matrices
-        double **omp_aligned_matrix_A = (double **)memalign(alignment, (size_t)(m_omp_aligned * sizeof(double*)));
-        double **omp_aligned_matrix_B = (double **)memalign(alignment, (size_t)(n_omp_aligned * sizeof(double*)));
-        double **omp_aligned_matrix_C = (double **)memalign(alignment, (size_t)(m_omp_aligned * sizeof(double*)));
-        for (i_omp_aligned=0; i_omp_aligned<m_omp_aligned; i_omp_aligned++)
-            omp_aligned_matrix_A[i_omp_aligned] = (double *)memalign(alignment, (size_t)(n_omp_aligned * sizeof(double)));
-
-        for (i_omp_aligned=0; i_omp_aligned<n_omp_aligned; i_omp_aligned++)
-            omp_aligned_matrix_B[i_omp_aligned] = (double *)memalign(alignment, (size_t)(k_omp_aligned * sizeof(double)));
-
-        for (i_omp_aligned=0; i_omp_aligned<m_omp_aligned; i_omp_aligned++)
-            omp_aligned_matrix_C[i_omp_aligned] = (double *)memalign(alignment, (size_t)(k_omp_aligned * sizeof(double)));
+	double **omp_aligned_matrix_A = (double**)aligned_alloc(alignment, m_row);
+        double **omp_aligned_matrix_B = (double**)aligned_alloc(alignment, n_row);
+	double **omp_aligned_matrix_C = (double**)aligned_alloc(alignment, m_row);
+	for (i_omp_aligned=0; i_omp_aligned<m_omp_aligned; i_omp_aligned++){
+            omp_aligned_matrix_A[i_omp_aligned] = (double*)aligned_alloc(alignment, n_col);
+            omp_aligned_matrix_C[i_omp_aligned] = (double*)aligned_alloc(alignment, k_col);
+	}
+	for (i_omp_aligned=0; i_omp_aligned<n_omp_aligned; i_omp_aligned++){
+            omp_aligned_matrix_B[i_omp_aligned] = (double*)aligned_alloc(alignment, k_col);
+	}
 
 	// Populate matrices A and B with data
         ompPopulateMatrix(omp_aligned_matrix_A, &m_omp_aligned, &n_omp_aligned);
