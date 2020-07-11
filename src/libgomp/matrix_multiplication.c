@@ -259,10 +259,6 @@ int main(int argc, char *argv[]){
 	for (i=0; i<m; i++)
 	    free(omp_nonaligned_matrix_A[i]);
 
-	double **omp_aligned_matrix_A;
-	double **omp_aligned_matrix_B;
-	double **omp_aligned_matrix_C;
-	
 	// Initialize vars
         int i_omp_aligned;
 	int m_omp_aligned;
@@ -272,7 +268,7 @@ int main(int argc, char *argv[]){
         clock_gettime(CLOCK_REALTIME, &t2_start);
 
         int alignment;
-    #pragma omp parallel shared(omp_aligned_matrix_A, omp_aligned_matrix_B, omp_aligned_matrix_C) private(i_omp_aligned, m_omp_aligned, n_omp_aligned, k_omp_aligned, alignment)
+    #pragma omp parallel private(i_omp_aligned, m_omp_aligned, n_omp_aligned, k_omp_aligned, alignment)
     {
 	// Do not use dynamic threading
         omp_set_dynamic(0);
@@ -286,17 +282,17 @@ int main(int argc, char *argv[]){
 	alignment = ALIGNMENT;
 
 	// Initialize matrices
-	omp_aligned_matrix_A = (double **)aligned_alloc(alignment, alignment * m_omp_aligned * sizeof(double*));
-	omp_aligned_matrix_B = (double **)aligned_alloc(alignment, alignment * n_omp_aligned * sizeof(double*));
-	omp_aligned_matrix_C = (double **)aligned_alloc(alignment, alignment * m_omp_aligned * sizeof(double*));
-	for (i_omp_aligned=0; i_omp_aligned<m_omp_aligned; i_omp_aligned++)
-            omp_aligned_matrix_A[i_omp_aligned] = (double *)aligned_alloc(alignment, alignment * n_omp_aligned * sizeof(double));
+        double **omp_aligned_matrix_A = (double **)memalign(alignment, (size_t)(m_omp_aligned * sizeof(double*)));
+        double **omp_aligned_matrix_B = (double **)memalign(alignment, (size_t)(n_omp_aligned * sizeof(double*)));
+        double **omp_aligned_matrix_C = (double **)memalign(alignment, (size_t)(m_omp_aligned * sizeof(double*)));
+        for (i_omp_aligned=0; i_omp_aligned<m_omp_aligned; i_omp_aligned++)
+            omp_aligned_matrix_A[i_omp_aligned] = (double *)memalign(alignment, (size_t)(n_omp_aligned * sizeof(double)));
 
-	for (i_omp_aligned=0; i_omp_aligned<n_omp_aligned; i_omp_aligned++)
-            omp_aligned_matrix_B[i_omp_aligned] = (double *)aligned_alloc(alignment, alignment * k_omp_aligned * sizeof(double));
+        for (i_omp_aligned=0; i_omp_aligned<n_omp_aligned; i_omp_aligned++)
+            omp_aligned_matrix_B[i_omp_aligned] = (double *)memalign(alignment, (size_t)(k_omp_aligned * sizeof(double)));
 
-	for (i_omp_aligned=0; i_omp_aligned<m_omp_aligned; i_omp_aligned++)
-            omp_aligned_matrix_C[i_omp_aligned] = (double *)aligned_alloc(alignment, alignment * k_omp_aligned * sizeof(double));
+        for (i_omp_aligned=0; i_omp_aligned<m_omp_aligned; i_omp_aligned++)
+            omp_aligned_matrix_C[i_omp_aligned] = (double *)memalign(alignment, (size_t)(k_omp_aligned * sizeof(double)));
 
 	// Populate matrices A and B with data
         ompPopulateMatrix(omp_aligned_matrix_A, &m_omp_aligned, &n_omp_aligned);
@@ -310,14 +306,6 @@ int main(int argc, char *argv[]){
 	elapsed_time += (t2_end.tv_nsec - t2_start.tv_nsec) / 1000000.0;
 	elapsed_time /= 1000.0;
 	printf("Aligned OpenMP took %0.3f sec\n", elapsed_time);
-
-	// Free matrices
-	for (i=0; i<n; i++){
-	    free(omp_aligned_matrix_B[i]);
-	    free(omp_aligned_matrix_C[i]);
-	}
-	for (i=0; i<m; i++)
-	    free(omp_aligned_matrix_A[i]);
 
         // Initialize regular matrices
 	double **matrix_A;
