@@ -17,7 +17,7 @@
 #include <malloc.h>
 
 #define MAX_MAT_VALUE 100000
-#define ALIGNMENT 64
+#define ALIGNMENT 16
 #define CHUNK 10
 
 void populateMatrix(double **matrix, int m, int n){
@@ -124,6 +124,46 @@ void matrixMultiply(double **mat_A, double **mat_B, double **mat_C, int m, int n
 
             for (j=0; j<k; j++){
                 mat_C[h][j] += (tmp * mat_B[h][j]);
+	    }
+	}
+    }
+};
+
+#pragma omp declare simd aligned(mat_A,mat_B,mat_C:ALIGNMENT)
+void ompSIMDMatrixMultiply(double **__restrict__ mat_A, double **__restrict__ mat_B, double **__restrict__ mat_C, int m, int n, int k){	
+/* Uses OpenMP to multiply 'mat_A' and 'mat_B' to generate 'mat_C'
+ *
+ * Inputs
+ * ------
+ * mat_A: double**
+ *     The first matrix, of size M x N
+ *
+ * mat_B: double**
+ *     The second matrix, of size N x K
+ *
+ * mat_C: double**
+ *     The resulting matrix
+ *
+ * m: int
+ *     The number of rows in mat_A
+ *
+ * n: int 
+ *     The number of cols in mat_A *or* number of rows in mat_B
+ *
+ * k: int 
+ *     The number of cols in mat_B
+ */
+    // Iterative vars
+    int a, b, c;
+
+    #pragma omp for simd aligned(mat_A,mat_B,mat_C:ALIGNMENT)
+    for (a=0; a<n; a++){
+
+        for (b=0; b<m; b++){
+	    mat_C[a][b] = 0.0;
+
+            for (c=0; c<k; c++){
+                mat_C[a][c] = (mat_C[a][c]) + (mat_A[a][c] * mat_B[a][c]);
 	    }
 	}
     }
@@ -310,7 +350,7 @@ int main(int argc, char *argv[]){
         ompPopulateMatrix(omp_aligned_matrix_B, &n_omp_aligned, &k_omp_aligned);
 
 	// Matrix multiply
-        ompMatrixMultiply(omp_aligned_matrix_A, omp_aligned_matrix_B, omp_aligned_matrix_C, m_omp_aligned, n_omp_aligned, k_omp_aligned);
+        ompSIMDMatrixMultiply(omp_aligned_matrix_A, omp_aligned_matrix_B, omp_aligned_matrix_C, m_omp_aligned, n_omp_aligned, k_omp_aligned);
     }	
 	clock_gettime(CLOCK_REALTIME, &t2_end);
 	elapsed_time = (t2_end.tv_sec - t2_start.tv_sec) * 1000.0;
