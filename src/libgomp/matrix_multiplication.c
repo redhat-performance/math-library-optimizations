@@ -15,6 +15,7 @@
 #include <time.h>
 #include <assert.h>
 #include <malloc.h>
+#include <ctype.h>
 
 #define MAX_MAT_VALUE 100000
 #define ALIGNMENT 16
@@ -286,6 +287,35 @@ double computeStandardDev(double *all_timings, int num_runs, double avg_time){
     return stdev;
 };
 
+int isPositiveInteger(char value_to_check[]) { 
+/* Checks if a string (char array) is actually a positive integer
+ *
+ * Inputs
+ * ------
+ * value_to_check: char[]
+ *     User input to check.
+ *
+ * Returns
+ * -------
+ * 1 if true, 0 if false.
+ */
+
+    // Set iteration var
+    int i;
+
+    // Check if the first value is a zero. We don't want zeros.
+    if (value_to_check[0] == '0')
+	return 0;
+
+    // Iterate through the char array to see if the value has any letters, hyphens (e.g., if the user
+    // passed in '-100'), or other special chars.
+    for (i=0; value_to_check[i] != 0; i++)
+        if (!isdigit(value_to_check[i]))
+            return 0;
+
+    return 1;
+} 
+
 
 int main(int argc, char *argv[]){
 
@@ -295,14 +325,28 @@ int main(int argc, char *argv[]){
     // Make sure the user passed in 'm', 'n', and 'k'
     if (argc < 4){
         printf("\nIncomplete set of arguments. Required arguments: 'm', 'n', and 'k'. Optional arguments: 'num_iterations' and 'seed'.\n");
-        return 1;
+        exit(1);
     }
     else if (argc > 6){
         printf("\nToo many arguments. Required arguments: 'm', 'n', and 'k'. Optional arguments: (1.) num iterations, and (2.) 'seed'\n");
-        return 1;
+        exit(1);
     }
 
-    // User inputs succeeded. Now parse input
+    // Check if each value in argv is an integer
+    int arg_is_positive_integer;
+    for (j=1; j<argc; j++){
+
+	// Check if the given argument is a positive integer.
+        arg_is_positive_integer = isPositiveInteger(argv[j]);
+
+	// If the value is not a positive integer, then throw an error
+	if (arg_is_positive_integer == 0){
+            printf("ERROR: Argument #%d is not a positive integer. Each argument must be an integer > 0.\n", j);
+	    exit(1);
+	}
+    }
+
+    // If we've confirmed that the inputs are positive integers, let's parse them
     char *p;
     m = strtol(argv[1], &p, 10);
     n = strtol(argv[2], &p, 10);
@@ -320,29 +364,41 @@ int main(int argc, char *argv[]){
     else
         seed = DEFAULT_SEED;
 
+    // Print header
+    printf("---------------------\n");
+    printf("PARSED INPUTS\n");
+    printf("---------------------\n");
+
     // Print matrix info (MxN matrix)
-    printf("Matrix info:\n");
-    printf("  Matrix A:\n");
-    printf("      M=%d\n", m);
-    printf("      N=%d\n", n);
-    printf("  Matrix B:\n");
-    printf("      N=%d\n", n);
-    printf("      K=%d\n\n", k);
+    printf("  Matrix info:\n");
+    printf("    Matrix A:\n");
+    printf("        M=%d\n", m);
+    printf("        N=%d\n", n);
+    printf("    Matrix B:\n");
+    printf("        N=%d\n", n);
+    printf("        K=%d\n\n", k);
 
     // Print iteration info
-    printf("Num iterations:\n");
+    printf("  Iteration info:\n");
     if (argc == 5 || argc == 6)
-        printf("  Using # of iterations = %d\n\n", num_iterations);
+        printf("    Using # of iterations = %d\n\n", num_iterations);
     else
-        printf("  Using predefined # of iterations = DEFAULT_NUM_ITERATIONS = %d\n\n", DEFAULT_NUM_ITERATIONS);
+        printf("    Using predefined # of iterations = DEFAULT_NUM_ITERATIONS = %d\n\n", DEFAULT_NUM_ITERATIONS);
 
     // Print seed info
-    printf("Seed info:\n");
+    printf("  Seed info:\n");
     if (argc == 6)
-        printf("  Using seed = %d\n\n", seed);
+        printf("    Using seed = %d\n\n", seed);
     else
-        printf("  Using predefined seed = DEFAULT_SEED = %d\n\n", seed);
+        printf("    Using predefined seed = DEFAULT_SEED = %d\n\n", seed);
 
+    // Print number of threads and chunk info
+    const char *num_set_omp_threads = getenv("OMP_NUM_THREADS");
+    int num_omp_threads = strtol(num_set_omp_threads, &p, 10);
+    int num_chunks = num_iterations / num_omp_threads;
+    printf("  OpenMP threading info:\n");
+    printf("    Using %s threads\n", num_set_omp_threads);
+    printf("    Using %d chunks\n\n", num_chunks);
 
     // Setup matrices
     double **omp_nonaligned_matrix_A;
@@ -358,6 +414,12 @@ int main(int argc, char *argv[]){
     // Set up iteration params
     int num_nonaligned_iterations;
 
+    // Print number of iterations
+    printf("----------------------------------------------------\n");
+    printf("Unaligned GOMP matrix multiplication across %d runs:\n", num_iterations);
+    printf("----------------------------------------------------\n");
+
+    // Begin
     #pragma omp parallel shared(omp_nonaligned_matrix_A, omp_nonaligned_matrix_B, omp_nonaligned_matrix_C) private(i, m_omp_nonaligned, n_omp_nonaligned, k_omp_nonaligned, seed_omp_nonaligned, num_nonaligned_iterations)
     {
         // Set values for m, n, and k
@@ -408,7 +470,6 @@ int main(int argc, char *argv[]){
         ompPopulateMatrix(omp_nonaligned_matrix_B, &n_omp_nonaligned, &k_omp_nonaligned, seed_omp_nonaligned);
 
 	// Matrix multiply
-	printf("Unaligned GOMP matrix multiplication across %d runs:\n", num_nonaligned_iterations);
 	#pragma omp for
 	for (i=0; i<num_nonaligned_iterations; i++){
             clock_gettime(CLOCK_REALTIME, &start_time);
@@ -423,7 +484,7 @@ int main(int argc, char *argv[]){
 	    nonaligned_elapsed_time;
     
 	    // Print out elapsed time for run #i
-            printf("  Run #%d: %0.3f sec\n", i, nonaligned_elapsed_time);
+            printf("  Run #%d: %0.3f sec\n", i+1, nonaligned_elapsed_time / num_omp_threads);
 
 	    // Keep track of total elapsed time
 	    total_nonaligned_elapsed_time += nonaligned_elapsed_time;
@@ -438,15 +499,23 @@ int main(int argc, char *argv[]){
         // Compute statistics
         #pragma omp single
 	{
-
         // Update total runtime. (Each thread is capturing the performance timings, so we need to combine the total of all threads)
-	avg_nonaligned_elapsed_time = num_threads_used * total_nonaligned_elapsed_time / (double)num_nonaligned_iterations;
+	avg_nonaligned_elapsed_time = total_nonaligned_elapsed_time / (double)num_nonaligned_iterations;
 	nonaligned_standard_dev = computeStandardDev(nonaligned_omp_run_timings, num_nonaligned_iterations, avg_nonaligned_elapsed_time);
 
 	// Print timings
 	printf("  RUN_STATISTICS:\n");
-	printf("  >> Total runtime (per chunk) : %0.3f sec\n", total_nonaligned_elapsed_time);
-	printf("  >> Average runtime overall   : %0.2f +/- %0.2f sec\n", avg_nonaligned_elapsed_time, nonaligned_standard_dev);
+	printf("  >> Total runtime : %0.3f sec\n", total_nonaligned_elapsed_time);
+	double chunk_timing = 0.0;
+	int chunk_count = 0;
+        for (i=0; i<num_nonaligned_iterations; i++){
+	    chunk_timing = nonaligned_omp_run_timings[i];
+	    if (chunk_timing > 0.0){
+		chunk_count++;
+                printf("        - Chunk %d took : %0.3f sec\n", chunk_count, nonaligned_omp_run_timings[i]);
+	    }
+	}
+	printf("  >> Average runtime overall (per run) : %0.2f +/- %0.2f sec\n", avg_nonaligned_elapsed_time, nonaligned_standard_dev);
 	}
     }	
 
@@ -477,10 +546,14 @@ int main(int argc, char *argv[]){
     size_t n_aligned_col_size = ((size_t) (n * sizeof(double)) + ALIGNMENT - 1) & (~(ALIGNMENT - 1));;
     size_t k_aligned_col_size = ((size_t) (k * sizeof(double)) + ALIGNMENT - 1) & (~(ALIGNMENT - 1));
 
-    // test
-	double **omp_aligned_matrix_A;
-        double **omp_aligned_matrix_B;
-	double **omp_aligned_matrix_C;
+    double **omp_aligned_matrix_A;
+    double **omp_aligned_matrix_B;
+    double **omp_aligned_matrix_C;
+
+    // Print number of iterations
+    printf("----------------------------------------------------\n");
+    printf("Aligned GOMP matrix multiplication across %d runs:\n", num_iterations);
+    printf("----------------------------------------------------\n");
 
     #pragma omp parallel shared(m_row, n_col, n_row, k_col, alignment, seed_omp_aligned, num_aligned_iterations, omp_aligned_matrix_A, omp_aligned_matrix_B, omp_aligned_matrix_C) private(i_omp_aligned)
     {
@@ -541,7 +614,6 @@ int main(int argc, char *argv[]){
         ompPopulateMatrix(omp_aligned_matrix_B, &n_omp_aligned, &k_omp_aligned, seed_omp_aligned);
 
 	// Matrix multiply
-	printf("Aligned GOMP matrix multiplication across %d runs:\n", num_aligned_iterations);
         #pragma omp for
 	for (i=0; i<num_aligned_iterations; i++){
             clock_gettime(CLOCK_REALTIME, &start_time);
@@ -555,7 +627,7 @@ int main(int argc, char *argv[]){
             aligned_elapsed_time /= 1000.0;
     
 	    // Print out elapsed time for run #i
-            printf("  Run #%d: %0.3f sec\n", i, aligned_elapsed_time);
+            printf("  Run #%d: %0.3f sec\n", i+1, aligned_elapsed_time / num_omp_threads);
 
 	    // Keep track of total elapsed time
 	    total_aligned_elapsed_time += aligned_elapsed_time;
@@ -570,13 +642,22 @@ int main(int argc, char *argv[]){
         // Compute statistics
         #pragma omp single
 	{	
-	avg_aligned_elapsed_time = num_threads_used * total_aligned_elapsed_time / (double)num_aligned_iterations;
+	avg_aligned_elapsed_time = total_aligned_elapsed_time / (double)num_aligned_iterations;
 	aligned_standard_dev = computeStandardDev(aligned_omp_run_timings, num_aligned_iterations, avg_aligned_elapsed_time);
 
 	// Print timings
 	printf("  RUN_STATISTICS:\n");
-	printf("  >> Total runtime (per chunk) : %0.3f sec\n", total_aligned_elapsed_time);
-	printf("  >> Average runtime overall   : %0.2f +/- %0.2f sec\n", avg_aligned_elapsed_time, aligned_standard_dev);
+	printf("  >> Total runtime : %0.3f sec\n", total_aligned_elapsed_time);
+	double chunk_timing = 0.0;
+	int chunk_count = 0;
+        for (i=0; i<num_aligned_iterations; i++){
+	    chunk_timing = aligned_omp_run_timings[i];
+	    if (chunk_timing > 0.0){
+		chunk_count++;
+                printf("        - Chunk %d took : %0.3f sec\n", chunk_count, aligned_omp_run_timings[i]);
+	    }
+	}
+	printf("  >> Average runtime overall (per run) : %0.2f +/- %0.2f sec\n", avg_aligned_elapsed_time, aligned_standard_dev);
 	}
     }
 
