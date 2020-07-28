@@ -510,9 +510,9 @@ int main(int argc, char *argv[]){
 	int chunk_count = 0;
         for (i=0; i<num_nonaligned_iterations; i++){
 	    chunk_timing = nonaligned_omp_run_timings[i];
-	    if (chunk_timing > 0.0){
+	    if (isgreater(chunk_timing, 0.0)){
 		chunk_count++;
-                printf("        - Chunk %d took : %0.3f sec\n", chunk_count, nonaligned_omp_run_timings[i]);
+                printf("        - Chunk %d took : %0.3f sec\n", chunk_count, chunk_timing);
 	    }
 	}
 	printf("  >> Average runtime overall (per run) : %0.2f +/- %0.2f sec\n", avg_nonaligned_elapsed_time, nonaligned_standard_dev);
@@ -652,9 +652,9 @@ int main(int argc, char *argv[]){
 	int chunk_count = 0;
         for (i=0; i<num_aligned_iterations; i++){
 	    chunk_timing = aligned_omp_run_timings[i];
-	    if (chunk_timing > 0.0){
+	    if (isgreater(chunk_timing, 0.0)){
 		chunk_count++;
-                printf("        - Chunk %d took : %0.3f sec\n", chunk_count, aligned_omp_run_timings[i]);
+                printf("        - Chunk %d took : %0.3f sec\n", chunk_count, chunk_timing);
 	    }
 	}
 	printf("  >> Average runtime overall (per run) : %0.2f +/- %0.2f sec\n", avg_aligned_elapsed_time, aligned_standard_dev);
