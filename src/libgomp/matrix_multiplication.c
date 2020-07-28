@@ -508,13 +508,21 @@ int main(int argc, char *argv[]){
 	printf("  RUN_STATISTICS:\n");
 	printf("  >> Total runtime : %0.3f sec\n", total_nonaligned_elapsed_time);
 	double chunk_timing = 0.0;
-	int chunk_count = 0;
+	int chunk_count = 1;
         for (i=0; i<num_nonaligned_iterations; i++){
+
+	    // Extract the time it took to run the chunk
 	    chunk_timing = nonaligned_omp_run_timings[i];
-	    if (isgreater(chunk_timing, 0.0)){
-		chunk_count++;
+
+	    // If the timing is greater than 0, then we want to print the chunk timing
+	    if (isgreater((float)chunk_timing, 0.0f)){
                 printf("        - Chunk %d took : %0.3f sec\n", chunk_count, chunk_timing);
+		chunk_count++;
 	    }
+
+	    // If we've already gone through all of our chunks, then break the loop
+	    if (chunk_count > num_chunks)
+                break;
 	}
 	printf("  >> Average runtime overall (per run) : %0.2f +/- %0.2f sec\n", avg_nonaligned_elapsed_time, nonaligned_standard_dev);
 	}
@@ -650,14 +658,23 @@ int main(int argc, char *argv[]){
 	printf("  RUN_STATISTICS:\n");
 	printf("  >> Total runtime : %0.3f sec\n", total_aligned_elapsed_time);
 	double chunk_timing = 0.0;
-	int chunk_count = 0;
+	int chunk_count = 1;
         for (i=0; i<num_aligned_iterations; i++){
+
+	    // Extract the time it took to run the chunk
 	    chunk_timing = aligned_omp_run_timings[i];
-	    if (isgreater(chunk_timing, 0.0)){
-		chunk_count++;
+
+	    // If the timing is greater than 0, then we want to print the chunk timing
+	    if (isgreater((float)chunk_timing, 0.0f)){
                 printf("        - Chunk %d took : %0.3f sec\n", chunk_count, chunk_timing);
+		chunk_count++;
 	    }
+
+	    // If we've already gone through all of our chunks, then break the loop
+	    if (chunk_count > num_chunks)
+                break;
 	}
+
 	printf("  >> Average runtime overall (per run) : %0.2f +/- %0.2f sec\n", avg_aligned_elapsed_time, aligned_standard_dev);
 	}
     }
