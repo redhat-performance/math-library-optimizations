@@ -16,12 +16,12 @@
 #include <assert.h>
 #include <malloc.h>
 #include <ctype.h>
+#include <unistd.h>
 
 #define MAX_MAT_VALUE 100000
 #define ALIGNMENT 16
 #define CHUNK 10
 #define DEFAULT_SEED 5
-#define DEFAULT_NUM_ITERATIONS 10
 
 void populateMatrix(double **matrix, int m, int n, int seed){
 /* Populates a matrix with random values 
@@ -355,8 +355,9 @@ int main(int argc, char *argv[]){
     // If the user passed in a number of iterations, then let's parse it
     if (argc == 5 || argc == 6)
         num_iterations = strtol(argv[4], &p, 10);
-    else
-	num_iterations = DEFAULT_NUM_ITERATIONS;
+    else {
+	num_iterations = sysconf(_SC_NPROCESSORS_ONLN);
+    }
 
     // If the user passed in a seed, let's parse it
     if (argc == 6)
@@ -383,7 +384,7 @@ int main(int argc, char *argv[]){
     if (argc == 5 || argc == 6)
         printf("    Using # of iterations = %d\n\n", num_iterations);
     else
-        printf("    Using predefined # of iterations = DEFAULT_NUM_ITERATIONS = %d\n\n", DEFAULT_NUM_ITERATIONS);
+        printf("    Using predefined # of iterations = %d (=%d cores)\n\n", num_iterations, num_iterations);
 
     // Print seed info
     printf("  Seed info:\n");
