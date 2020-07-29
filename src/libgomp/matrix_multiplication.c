@@ -401,11 +401,6 @@ int main(int argc, char *argv[]){
     printf("    Using %s threads\n", num_set_omp_threads);
     printf("    Using %d chunks\n\n", num_chunks);
 
-    // Setup matrices
-    double **omp_nonaligned_matrix_A;
-    double **omp_nonaligned_matrix_B;
-    double **omp_nonaligned_matrix_C;
-
     // Set up matrix params
     int m_omp_nonaligned;
     int n_omp_nonaligned;
@@ -421,7 +416,7 @@ int main(int argc, char *argv[]){
     printf("----------------------------------------------------\n");
 
     // Begin
-    #pragma omp parallel shared(omp_nonaligned_matrix_A, omp_nonaligned_matrix_B, omp_nonaligned_matrix_C) private(i, m_omp_nonaligned, n_omp_nonaligned, k_omp_nonaligned, seed_omp_nonaligned, num_nonaligned_iterations)
+    #pragma omp parallel private(i, m_omp_nonaligned, n_omp_nonaligned, k_omp_nonaligned, seed_omp_nonaligned, num_nonaligned_iterations)
     {
         // Set values for m, n, and k
         m_omp_nonaligned = m;
@@ -452,9 +447,9 @@ int main(int argc, char *argv[]){
 	double num_threads_used = (double)omp_get_num_threads();
 
 	// Set up matrices
-	omp_nonaligned_matrix_A = (double **)malloc(m_omp_nonaligned * sizeof(double*));
-	omp_nonaligned_matrix_B = (double **)malloc(n_omp_nonaligned * sizeof(double*));
-	omp_nonaligned_matrix_C = (double **)malloc(m_omp_nonaligned * sizeof(double*));
+	double **omp_nonaligned_matrix_A = (double **)malloc(m_omp_nonaligned * sizeof(double*));
+	double **omp_nonaligned_matrix_B = (double **)malloc(n_omp_nonaligned * sizeof(double*));
+	double **omp_nonaligned_matrix_C = (double **)malloc(m_omp_nonaligned * sizeof(double*));
 	for (i=0; i<m; i++){
             omp_nonaligned_matrix_A[i] = (double *)malloc(n_omp_nonaligned * sizeof(double));
             omp_nonaligned_matrix_C[i] = (double *)malloc(k_omp_nonaligned * sizeof(double));
@@ -528,14 +523,6 @@ int main(int argc, char *argv[]){
 	}
     }	
 
-    // Free matrices
-    for (i=0; i<n; i++) {
-        free(omp_nonaligned_matrix_B[i]);
-        free(omp_nonaligned_matrix_C[i]);
-    }
-    for (i=0; i<m; i++)
-        free(omp_nonaligned_matrix_A[i]);
-
     // Initialize vars
     int i_omp_aligned;
     int m_omp_aligned;
@@ -555,16 +542,12 @@ int main(int argc, char *argv[]){
     size_t n_aligned_col_size = ((size_t) (n * sizeof(double)) + ALIGNMENT - 1) & (~(ALIGNMENT - 1));;
     size_t k_aligned_col_size = ((size_t) (k * sizeof(double)) + ALIGNMENT - 1) & (~(ALIGNMENT - 1));
 
-    double **omp_aligned_matrix_A;
-    double **omp_aligned_matrix_B;
-    double **omp_aligned_matrix_C;
-
     // Print number of iterations
     printf("----------------------------------------------------\n");
     printf("Aligned GOMP matrix multiplication across %d runs:\n", num_iterations);
     printf("----------------------------------------------------\n");
 
-    #pragma omp parallel shared(m_row, n_col, n_row, k_col, alignment, seed_omp_aligned, num_aligned_iterations, omp_aligned_matrix_A, omp_aligned_matrix_B, omp_aligned_matrix_C) private(i_omp_aligned)
+    #pragma omp parallel shared(m_row, n_col, n_row, k_col, alignment, seed_omp_aligned, num_aligned_iterations) private(i_omp_aligned)
     {
 	// Do not use dynamic threading
         omp_set_dynamic(0);
@@ -604,9 +587,9 @@ int main(int argc, char *argv[]){
         struct timespec end_time;
 
 	// Initialize matrices
-	omp_aligned_matrix_A = (double**)aligned_alloc(alignment, m_row);
-        omp_aligned_matrix_B = (double**)aligned_alloc(alignment, n_row);
-	omp_aligned_matrix_C = (double**)aligned_alloc(alignment, m_row);
+	double **omp_aligned_matrix_A = (double**)aligned_alloc(alignment, m_row);
+        double **omp_aligned_matrix_B = (double**)aligned_alloc(alignment, n_row);
+	double **omp_aligned_matrix_C = (double**)aligned_alloc(alignment, m_row);
 	for (i_omp_aligned=0; i_omp_aligned<m_omp_aligned; i_omp_aligned++){
             omp_aligned_matrix_A[i_omp_aligned] = (double*)aligned_alloc(alignment, n_col);
             omp_aligned_matrix_C[i_omp_aligned] = (double*)aligned_alloc(alignment, k_col);
@@ -678,14 +661,6 @@ int main(int argc, char *argv[]){
 	printf("  >> Average runtime overall (per run) : %0.2f +/- %0.2f sec\n", avg_aligned_elapsed_time, aligned_standard_dev);
 	}
     }
-
-    // Free matrices
-    for (i=0; i<n; i++) {
-        free(omp_aligned_matrix_B[i]);
-        free(omp_aligned_matrix_C[i]);
-    }
-    for (i=0; i<m; i++)
-        free(omp_aligned_matrix_A[i]);
 
     return 0;
 }
