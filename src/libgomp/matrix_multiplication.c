@@ -171,7 +171,7 @@ void ompSIMDMatrixMultiply(double **__restrict__ mat_A, double **__restrict__ ma
 	    mat_C[a][b] = 0.0;
 
             for (c=0; c<k; c++){
-                mat_C[a][c] = (mat_C[a][c]) + (mat_A[a][c] * mat_B[a][c]);
+                mat_C[a][b] = (mat_C[a][b]) + (mat_A[a][c] * mat_B[c][b]);
 	    }
 	}
     }
@@ -211,7 +211,7 @@ void ompMatrixMultiply(double **mat_A, double **mat_B, double **mat_C, int m, in
 	    mat_C[a][b] = 0.0;
 
             for (c=0; c<k; c++){
-                mat_C[a][c] = (mat_C[a][c]) + (mat_A[a][c] * mat_B[a][c]);
+                mat_C[a][b] = (mat_C[a][b]) + (mat_A[a][c] * mat_B[c][b]);
 	    }
 	}
     }
