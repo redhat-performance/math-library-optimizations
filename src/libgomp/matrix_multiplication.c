@@ -19,7 +19,6 @@
 #include <unistd.h>
 
 #define MAX_MAT_VALUE 100000
-#define ALIGNMENT 16
 #define CHUNK 10
 #define DEFAULT_SEED 5
 
@@ -401,6 +400,12 @@ int main(int argc, char *argv[]){
     printf("    Using %s threads\n", num_set_omp_threads);
     printf("    Using %d chunks\n\n", num_chunks);
 
+    //test
+    printf("ALIGNMENT = %d\n", ALIGNMENT);
+
+
+#ifdef UNALIGNED
+
     // Set up matrix params
     int m_omp_nonaligned;
     int n_omp_nonaligned;
@@ -523,6 +528,9 @@ int main(int argc, char *argv[]){
 	}
     }	
 
+#endif
+
+#ifdef ALIGNED
     // Initialize vars
     int i_omp_aligned;
     int m_omp_aligned;
@@ -661,6 +669,7 @@ int main(int argc, char *argv[]){
 	printf("  >> Average runtime overall (per run) : %0.2f +/- %0.2f sec\n", avg_aligned_elapsed_time, aligned_standard_dev);
 	}
     }
+#endif
 
     return 0;
 }
