@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-g -flto -fopenmp -fomit-frame-pointer -lm
+CFLAGS=-O2 -g -flto -fopenmp -fomit-frame-pointer -lm -msse2 -mavx -mavx2
 CACHE_ALIGNMENT=$(shell getconf LEVEL1_DCACHE_LINESIZE)
 PAGE_ALIGNMENT=$(shell getconf PAGE_SIZE)
 
