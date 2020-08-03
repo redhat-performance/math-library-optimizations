@@ -108,6 +108,11 @@ void ompPopulateMatrix(double *matrix, int rows, int cols, int seed){
  *     Random seed or default seed
  */
 
+#pragma omp parallel shared(matrix, rows, cols)
+{
+    // Do not use dynamic threading
+    omp_set_dynamic(0);
+
     // Initialization of random integers
     srand(seed);
 
@@ -121,6 +126,7 @@ void ompPopulateMatrix(double *matrix, int rows, int cols, int seed){
 	    matrix[j + cols * i] = (double)rand() / (double)MAX_MAT_VALUE;
 	}
     }
+}
 }
 
 void matrixMultiply(double *mat_A, double *mat_B, double *mat_C, int m, int n, int k){
@@ -155,7 +161,6 @@ void matrixMultiply(double *mat_A, double *mat_B, double *mat_C, int m, int n, i
     // Temporary matrix val for matrix C
     double mat_value = 0.0;
 
-    #pragma omp for
     for (i=0; i<m; i++){
 
 	// Set matrix value equal to zero to initialize each iteration
@@ -204,6 +209,9 @@ void ompSIMDMatrixMultiply(double *__restrict__ mat_A, double *__restrict__ mat_
  * k: int 
  *     The number of cols in mat_B
  */
+
+#pragma omp parallel shared(mat_A, mat_B, mat_C, m, n, k, alignment)
+{
     // Iterative vars
     int i, j, h;
 
@@ -236,6 +244,7 @@ void ompSIMDMatrixMultiply(double *__restrict__ mat_A, double *__restrict__ mat_
 	    mat_C[idx_C] = mat_value;
 	}
     }
+}
 };
 
 void ompMatrixMultiply(double *mat_A, double *mat_B, double *mat_C, int m, int n, int k){	
@@ -261,6 +270,9 @@ void ompMatrixMultiply(double *mat_A, double *mat_B, double *mat_C, int m, int n
  * k: int 
  *     The number of cols in mat_B
  */
+
+#pragma omp parallel shared(mat_A, mat_B, mat_C, m, n, k)
+{
     // Iterative vars
     int i, j, h;
 
@@ -293,6 +305,7 @@ void ompMatrixMultiply(double *mat_A, double *mat_B, double *mat_C, int m, int n
 	    mat_C[idx_C] = mat_value;
 	}
     }
+}
 };
 
 double resetMatrix(double *matrix_to_reset, int width, int height){
@@ -349,18 +362,15 @@ double computeStandardDev(double *all_timings, int num_runs, double avg_time){
     // Get number of threads being used
     double num_omp_threads_used = (double)omp_get_num_threads();
 
-    // Get the number of chunks
-    int num_chunks = num_runs / num_omp_threads_used;
-
     // Compute cumulative sum
     for (i=0; i<num_runs; i++)
 	cumulative_sum = cumulative_sum + (double)pow((all_timings[i] - avg_time) / (double)(num_runs * num_omp_threads_used), 2);
 
     // Compute variance
-    variance = cumulative_sum / (double)(num_chunks);
+    variance = cumulative_sum / (double)(num_runs);
 
     // Now compute standard dev and return its value
-    stdev = sqrt(variance) / (double)(num_chunks);
+    stdev = sqrt(variance);
     return stdev;
 };
 
@@ -473,260 +483,226 @@ int main(int argc, char *argv[]){
     // Print number of threads and chunk info
     const char *num_set_omp_threads = getenv("OMP_NUM_THREADS");
     int num_omp_threads = strtol(num_set_omp_threads, &p, 10);
-    int num_chunks = num_iterations / num_omp_threads;
     printf("  OpenMP threading info:\n");
-    printf("    Using %s threads\n", num_set_omp_threads);
-    printf("    Using %d chunks\n\n", num_chunks);
+    printf("    Using %d threads\n\n", num_omp_threads);
 
     //Print out alignment info (if any)
     printf("  Alignment info:\n");
     if (ALIGNMENT == 1)
-        printf("    Unaligned\n");
+        printf("    Unaligned\n\n");
     else
-	printf("    %d bytes\n", ALIGNMENT);
+	printf("    %d bytes\n\n", ALIGNMENT);
 
 
 #ifdef UNALIGNED
-
-    // Set up matrix params
-    int nonaligned_dim_m;
-    int nonaligned_dim_n;
-    int nonaligned_dim_k;
-    int seed_omp_nonaligned;
-
-    // Set up iteration params
-    int num_nonaligned_iterations;
 
     // Print number of iterations
     printf("----------------------------------------------------\n");
     printf("Unaligned GOMP matrix multiplication across %d runs:\n", num_iterations);
     printf("----------------------------------------------------\n");
 
-    // Begin
-    #pragma omp parallel private(i, nonaligned_dim_m, nonaligned_dim_n, nonaligned_dim_k, seed_omp_nonaligned, num_nonaligned_iterations)
-    {
-        // Set values for m, n, and k
-        nonaligned_dim_m = m;
-	nonaligned_dim_n = n;
-	nonaligned_dim_k = k;
+    // Initialize elapsed time vars
+    double nonaligned_elapsed_time = 0.0;
+    double total_nonaligned_elapsed_time = 0.0;
+    double avg_nonaligned_elapsed_time = 0.0;
+    double nonaligned_standard_dev = 0.0;
+    double *nonaligned_omp_run_timings;
 
-        // Do the same with 'seed'
-        seed_omp_nonaligned = seed;
+    // Set up other time vars
+    struct timespec start_time;
+    struct timespec end_time;
 
-	// Initialize elapsed time vars
-	double nonaligned_elapsed_time = 0.0;
-	double total_nonaligned_elapsed_time = 0.0;
-	double avg_nonaligned_elapsed_time = 0.0;
-	double nonaligned_standard_dev = 0.0;
-	double *nonaligned_omp_run_timings;
+    // Get number of threads
+    double num_threads_used = (double)omp_get_num_threads();
 
-	// Set up other time vars
-        struct timespec start_time;
-        struct timespec end_time;
+    // Set up matrices
+    double *omp_nonaligned_matrix_A = (double *)malloc(m * n * sizeof(double));
+    double *omp_nonaligned_matrix_B = (double *)malloc(n * k * sizeof(double));
+    double *omp_nonaligned_matrix_C = (double *)malloc(m * k * sizeof(double));
 
-	// Define number of nonaligned iterations
-	num_nonaligned_iterations = num_iterations;
+    // Setup array to hold all timing data
+    nonaligned_omp_run_timings = (double*)malloc(num_iterations * sizeof(double));
 
-	// Do not use dynamic threading
-        omp_set_dynamic(0);
+    // Populate matrices A and B with data
+    ompPopulateMatrix(omp_nonaligned_matrix_A, m, n, seed);
+    ompPopulateMatrix(omp_nonaligned_matrix_B, n, k, seed);
 
-	// Get number of threads
-	double num_threads_used = (double)omp_get_num_threads();
+    // Matrix multiply
+    for (i=0; i<num_iterations; i++){
+        clock_gettime(CLOCK_REALTIME, &start_time);
+        ompMatrixMultiply(omp_nonaligned_matrix_A, omp_nonaligned_matrix_B, omp_nonaligned_matrix_C, m, n, k);
+        clock_gettime(CLOCK_REALTIME, &end_time);
 
-	// Set up matrices
-	double *omp_nonaligned_matrix_A = (double *)malloc(nonaligned_dim_m * nonaligned_dim_n * sizeof(double));
-	double *omp_nonaligned_matrix_B = (double *)malloc(nonaligned_dim_n * nonaligned_dim_k * sizeof(double));
-	double *omp_nonaligned_matrix_C = (double *)malloc(nonaligned_dim_m * nonaligned_dim_k * sizeof(double));
-
-	// Setup array to hold all timing data
-	nonaligned_omp_run_timings = (double*)malloc(num_nonaligned_iterations * sizeof(double));
-
-	// Populate matrices A and B with data
-        ompPopulateMatrix(omp_nonaligned_matrix_A, nonaligned_dim_m, nonaligned_dim_n, seed_omp_nonaligned);
-        ompPopulateMatrix(omp_nonaligned_matrix_B, nonaligned_dim_n, nonaligned_dim_k, seed_omp_nonaligned);
-
-	// Matrix multiply
-	#pragma omp for
-	for (i=0; i<num_nonaligned_iterations; i++){
-            clock_gettime(CLOCK_REALTIME, &start_time);
-            ompMatrixMultiply(omp_nonaligned_matrix_A, omp_nonaligned_matrix_B, omp_nonaligned_matrix_C, nonaligned_dim_m, nonaligned_dim_n, nonaligned_dim_k);
-	    clock_gettime(CLOCK_REALTIME, &end_time);
-
-	    // Compute elapsed time
-	    nonaligned_elapsed_time = 0.0;
-            nonaligned_elapsed_time = (end_time.tv_sec - start_time.tv_sec) * 1000.0;
-            nonaligned_elapsed_time += (end_time.tv_nsec - start_time.tv_nsec) / 1000000.0;
-            nonaligned_elapsed_time /= 1000.0;
-	    nonaligned_elapsed_time;
+        // Compute elapsed time
+        nonaligned_elapsed_time = 0.0;
+        nonaligned_elapsed_time = (end_time.tv_sec - start_time.tv_sec) * 1000.0;
+        nonaligned_elapsed_time += (end_time.tv_nsec - start_time.tv_nsec) / 1000000.0;
+        nonaligned_elapsed_time /= 1000.0;
+        nonaligned_elapsed_time;
     
-	    // Print out elapsed time for run #i
-            printf("  Run #%d: %0.3f sec\n", i+1, nonaligned_elapsed_time / num_omp_threads);
+        // Print out elapsed time for run #i
+        printf("  Run #%d:\t%0.3f sec\n", i+1, nonaligned_elapsed_time);
 
-	    // Keep track of total elapsed time
-	    total_nonaligned_elapsed_time += nonaligned_elapsed_time;
+	// Keep track of total elapsed time
+	total_nonaligned_elapsed_time += nonaligned_elapsed_time;
 
-	    // Hold onto the performance timings
-	    nonaligned_omp_run_timings[i] = nonaligned_elapsed_time;
+	// Hold onto the performance timings
+	nonaligned_omp_run_timings[i] = nonaligned_elapsed_time;
 
-	    // Reset matrix C
-	    resetMatrix(omp_nonaligned_matrix_C, nonaligned_dim_m, nonaligned_dim_k);
-	}
+	// Reset matrix C
+	resetMatrix(omp_nonaligned_matrix_C, m, k);
+    }
 
-        // Compute statistics
-        #pragma omp single
-	{
-        // Update total runtime. (Each thread is capturing the performance timings, so we need to combine the total of all threads)
-	avg_nonaligned_elapsed_time = total_nonaligned_elapsed_time / (double)num_nonaligned_iterations;
-	nonaligned_standard_dev = computeStandardDev(nonaligned_omp_run_timings, num_nonaligned_iterations, avg_nonaligned_elapsed_time);
+    // Compute statistics
+    avg_nonaligned_elapsed_time = total_nonaligned_elapsed_time / (double)num_iterations;
+    nonaligned_standard_dev = computeStandardDev(nonaligned_omp_run_timings, num_iterations, avg_nonaligned_elapsed_time);
 
-	// Print timings
-	printf("  RUN_STATISTICS:\n");
-	printf("  >> Total runtime : %0.3f sec\n", total_nonaligned_elapsed_time);
-	double chunk_timing = 0.0;
-	int chunk_count = 1;
-        for (i=0; i<num_nonaligned_iterations; i++){
-
-	    // Extract the time it took to run the chunk
-	    chunk_timing = nonaligned_omp_run_timings[i];
-
-	    // If the timing is greater than 0, then we want to print the chunk timing
-	    if (isgreater((float)chunk_timing, 0.0f)){
-                printf("        - Chunk %d took : %0.3f sec\n", chunk_count, chunk_timing);
-		chunk_count++;
-	    }
-
-	    // If we've already gone through all of our chunks, then break the loop
-	    if (chunk_count > num_chunks)
-                break;
-	}
-	printf("  >> Average runtime overall (per run) : %0.2f +/- %0.2f sec\n", avg_nonaligned_elapsed_time, nonaligned_standard_dev);
-	}
-    }	
+    // Print timings
+    printf("  RUN_STATISTICS:\n");
+    printf("  >> Total runtime : %0.3f sec\n", total_nonaligned_elapsed_time);
+    printf("  >> Average runtime overall (per run) : %0.2f +/- %0.2f sec\n", avg_nonaligned_elapsed_time, nonaligned_standard_dev);
 
 #endif
 
 #ifdef ALIGNED
-    // Initialize vars
-    int i_omp_aligned;
-    int seed_omp_aligned;
-    int num_aligned_iterations;
-    int aligned_dim_m;
-    int aligned_dim_n;
-    int aligned_dim_k;
-    int alignment;
 
     // Print number of iterations
     printf("----------------------------------------------------\n");
     printf("Aligned GOMP matrix multiplication across %d runs:\n", num_iterations);
     printf("----------------------------------------------------\n");
 
-    #pragma omp parallel shared(alignment, seed_omp_aligned, num_aligned_iterations, aligned_dim_m, aligned_dim_n, aligned_dim_k) private(i_omp_aligned)
-    {
-	// Do not use dynamic threading
-        omp_set_dynamic(0);
+    // Get number of threads
+    double num_threads_used = (double)omp_get_num_threads();
 
-	// Get number of threads
-	double num_threads_used = (double)omp_get_num_threads();
+    // Set alignment dims
+    size_t mat_A_aligned_size = ((size_t) (m * n * sizeof(double)) + ALIGNMENT - 1) & (~(ALIGNMENT - 1));
+    size_t mat_B_aligned_size = ((size_t) (n * k * sizeof(double)) + ALIGNMENT - 1) & (~(ALIGNMENT - 1));
+    size_t mat_C_aligned_size = ((size_t) (m * k * sizeof(double)) + ALIGNMENT - 1) & (~(ALIGNMENT - 1));
 
-        // Set seed
-        seed_omp_aligned = seed;
+    // Initialize matrices
+    double *omp_aligned_matrix_A = (double*)aligned_alloc(ALIGNMENT, mat_A_aligned_size);
+    double *omp_aligned_matrix_B = (double*)aligned_alloc(ALIGNMENT, mat_B_aligned_size);
+    double *omp_aligned_matrix_C = (double*)aligned_alloc(ALIGNMENT, mat_C_aligned_size);
 
-	// Set number of iterations
-	num_aligned_iterations = num_iterations;
+    // Populate the matrices with values
+    ompPopulateMatrix(omp_aligned_matrix_A, m, n, seed);
+    ompPopulateMatrix(omp_aligned_matrix_B, n, k, seed);
 
-	// Set dimensions
-        aligned_dim_m = m;
-	aligned_dim_n = n;
-	aligned_dim_k = k;
+    // Initialize elapsed time vars
+    double aligned_elapsed_time = 0.0;
+    double total_aligned_elapsed_time = 0.0;
 
-	// Set alignment
-	alignment = ALIGNMENT;
+    double avg_aligned_elapsed_time = 0.0;
+    double aligned_standard_dev = 0.0;
+    double *aligned_omp_run_timings;
 
-        // Set alignment dims
-        size_t mat_A_aligned_size = ((size_t) (aligned_dim_m * aligned_dim_n * sizeof(double)) + alignment - 1) & (~(alignment - 1));
-        size_t mat_B_aligned_size = ((size_t) (aligned_dim_n * aligned_dim_k * sizeof(double)) + alignment - 1) & (~(alignment - 1));
-        size_t mat_C_aligned_size = ((size_t) (aligned_dim_m * aligned_dim_k * sizeof(double)) + alignment - 1) & (~(alignment - 1));
+    // Set up other time vars
+    struct timespec start_time;
+    struct timespec end_time;
 
-	// Initialize matrices
-	double *omp_aligned_matrix_A = (double*)aligned_alloc(alignment, mat_A_aligned_size);
-        double *omp_aligned_matrix_B = (double*)aligned_alloc(alignment, mat_B_aligned_size);
-	double *omp_aligned_matrix_C = (double*)aligned_alloc(alignment, mat_C_aligned_size);
+    // Setup array to hold all timing data
+    aligned_omp_run_timings = (double*)malloc(num_iterations * sizeof(double));
 
-        ompPopulateMatrix(omp_aligned_matrix_A, aligned_dim_m, aligned_dim_n, seed_omp_aligned);
-        ompPopulateMatrix(omp_aligned_matrix_B, aligned_dim_n, aligned_dim_k, seed_omp_aligned);
+    // Matrix multiply
+    for (i=0; i<num_iterations; i++){
+		
+        clock_gettime(CLOCK_REALTIME, &start_time);
+        ompSIMDMatrixMultiply(omp_aligned_matrix_A, omp_aligned_matrix_B, omp_aligned_matrix_C, m, n, k, ALIGNMENT);
+	clock_gettime(CLOCK_REALTIME, &end_time);
 
-	// Initialize elapsed time vars
-	double aligned_elapsed_time = 0.0;
-	double total_aligned_elapsed_time = 0.0;
-	double avg_aligned_elapsed_time = 0.0;
-	double aligned_standard_dev = 0.0;
-	double *aligned_omp_run_timings;
-
-	// Set up other time vars
-        struct timespec start_time;
-        struct timespec end_time;
-
-	// Setup array to hold all timing data
-	aligned_omp_run_timings = (double*)malloc(num_aligned_iterations * sizeof(double));
-
-	// Populate matrices A and B with data
-
-	// Matrix multiply
-        #pragma omp for
-	for (i=0; i<num_aligned_iterations; i++){
-            clock_gettime(CLOCK_REALTIME, &start_time);
-            ompSIMDMatrixMultiply(omp_aligned_matrix_A, omp_aligned_matrix_B, omp_aligned_matrix_C, aligned_dim_m, aligned_dim_n, aligned_dim_k, alignment);
-	    clock_gettime(CLOCK_REALTIME, &end_time);
-
-	    // Compute elapsed time
-	    aligned_elapsed_time = 0.0;
-            aligned_elapsed_time = (end_time.tv_sec - start_time.tv_sec) * 1000.0;
-            aligned_elapsed_time += (end_time.tv_nsec - start_time.tv_nsec) / 1000000.0;
-            aligned_elapsed_time /= 1000.0;
+        // Compute elapsed time
+        aligned_elapsed_time = 0.0;
+        aligned_elapsed_time = (end_time.tv_sec - start_time.tv_sec) * 1000.0;
+        aligned_elapsed_time += (end_time.tv_nsec - start_time.tv_nsec) / 1000000.0;
+        aligned_elapsed_time /= 1000.0;
     
-	    // Print out elapsed time for run #i
-            printf("  Run #%d: %0.3f sec\n", i+1, aligned_elapsed_time / num_omp_threads);
+        // Print out elapsed time for run #i
+        printf("  Run #%d:\t%0.3f sec\n", i+1, aligned_elapsed_time);
 
-	    // Keep track of total elapsed time
-	    total_aligned_elapsed_time += aligned_elapsed_time;
+        // Keep track of total elapsed time
+        total_aligned_elapsed_time += aligned_elapsed_time;
 
-	    // Hold onto the performance timings
-	    aligned_omp_run_timings[i] = aligned_elapsed_time;
+        // Hold onto the performance timings
+        aligned_omp_run_timings[i] = aligned_elapsed_time;
 	    
-	    // Reset matrix C
-	    resetMatrix(omp_aligned_matrix_C, aligned_dim_m, aligned_dim_k);
-	}
-
-        // Compute statistics
-        #pragma omp single
-	{	
-	avg_aligned_elapsed_time = total_aligned_elapsed_time / (double)num_aligned_iterations;
-	aligned_standard_dev = computeStandardDev(aligned_omp_run_timings, num_aligned_iterations, avg_aligned_elapsed_time);
-
-	// Print timings
-	printf("  RUN_STATISTICS:\n");
-	printf("  >> Total runtime : %0.3f sec\n", total_aligned_elapsed_time);
-	double chunk_timing = 0.0;
-	int chunk_count = 1;
-        for (i=0; i<num_aligned_iterations; i++){
-
-	    // Extract the time it took to run the chunk
-	    chunk_timing = aligned_omp_run_timings[i];
-
-	    // If the timing is greater than 0, then we want to print the chunk timing
-	    if (isgreater((float)chunk_timing, 0.0f)){
-                printf("        - Chunk %d took : %0.3f sec\n", chunk_count, chunk_timing);
-		chunk_count++;
-	    }
-
-	    // If we've already gone through all of our chunks, then break the loop
-	    if (chunk_count > num_chunks)
-                break;
-	}
-
-	printf("  >> Average runtime overall (per run) : %0.2f +/- %0.2f sec\n", avg_aligned_elapsed_time, aligned_standard_dev);
-	}
+         // Reset matrix C
+        resetMatrix(omp_aligned_matrix_C, m, k);
     }
+
+    // Compute statistics
+    avg_aligned_elapsed_time = total_aligned_elapsed_time / (double)num_iterations;
+    aligned_standard_dev = computeStandardDev(aligned_omp_run_timings, num_iterations, avg_aligned_elapsed_time);
+
+    // Print timings
+    printf("  RUN_STATISTICS:\n");
+    printf("  >> Total runtime : %0.3f sec\n", total_aligned_elapsed_time);
+    printf("  >> Average runtime overall (per run) : %0.2f +/- %0.2f sec\n", avg_aligned_elapsed_time, aligned_standard_dev);
+
+#endif
+
+#ifdef NO_OPENMP
+    printf("----------------------------------------------------\n");
+    printf("*No GOMP* matrix multiplication across %d runs:\n", num_iterations);
+    printf("----------------------------------------------------\n");
+
+    // Initialize matrices
+    double *no_omp_matrix_A = (double *)malloc(m * n * sizeof(double));
+    double *no_omp_matrix_B = (double *)malloc(n * k * sizeof(double));
+    double *no_omp_matrix_C = (double *)malloc(m * k * sizeof(double));
+
+    // Populate matrices with data
+    populateMatrix(no_omp_matrix_A, m, n, seed);
+    populateMatrix(no_omp_matrix_B, n, k, seed);
+
+    // Initialize elapsed time vars
+    double no_omp_elapsed_time = 0.0;
+    double no_omp_total_elapsed_time = 0.0;
+    double avg_no_omp_elapsed_time = 0.0;
+    double no_omp_standard_dev = 0.0;
+    double *no_omp_run_timings;
+
+    // Set up other time vars
+    struct timespec start_time;
+    struct timespec end_time;
+
+    // Setup array to hold all timing data
+    no_omp_run_timings = (double*)malloc(num_iterations * sizeof(double));
+
+    // Matrix multiply
+    for (i=0; i<num_iterations; i++){
+		
+        clock_gettime(CLOCK_REALTIME, &start_time);
+        matrixMultiply(no_omp_matrix_A, no_omp_matrix_B, no_omp_matrix_C, m, n, k);
+	clock_gettime(CLOCK_REALTIME, &end_time);
+
+        // Compute elapsed time
+        no_omp_elapsed_time = 0.0;
+        no_omp_elapsed_time = (end_time.tv_sec - start_time.tv_sec) * 1000.0;
+        no_omp_elapsed_time += (end_time.tv_nsec - start_time.tv_nsec) / 1000000.0;
+        no_omp_elapsed_time /= 1000.0;
+    
+        // Print out elapsed time for run #i
+        printf("  Run #%d:\t%0.3f sec\n", i+1, no_omp_elapsed_time);
+
+        // Keep track of total elapsed time
+        no_omp_total_elapsed_time += no_omp_elapsed_time;
+
+        // Hold onto the performance timings
+        no_omp_run_timings[i] = no_omp_elapsed_time;
+	    
+         // Reset matrix C
+        resetMatrix(no_omp_matrix_C, m, k);
+    }
+
+    // Compute statistics
+    avg_no_omp_elapsed_time = no_omp_total_elapsed_time / (double)num_iterations;
+    no_omp_standard_dev = computeStandardDev(no_omp_run_timings, num_iterations, avg_no_omp_elapsed_time);
+
+    // Print timings
+    printf("  RUN_STATISTICS:\n");
+    printf("  >> Total runtime : %0.3f sec\n", no_omp_total_elapsed_time);
+    printf("  >> Average runtime overall (per run) : %0.2f +/- %0.2f sec\n", avg_no_omp_elapsed_time, no_omp_standard_dev);
+
 #endif
 
     return 0;
