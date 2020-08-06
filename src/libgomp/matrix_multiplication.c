@@ -619,15 +619,6 @@ int main(int argc, char *argv[]){
     // Setup array to hold all timing data
     aligned_omp_run_timings = (double*)malloc(num_iterations * sizeof(double));
 
-
-    //print
-    /* XXX REMOVE
-    printf("Matrix A:\n");
-    printMatrix(omp_aligned_matrix_A, m, n);
-    printf("\nMatrix B:\n");
-    printMatrix(omp_aligned_matrix_A, n, k);
-    */
-
     // Matrix multiply
     for (i=0; i<num_iterations; i++){
 		
