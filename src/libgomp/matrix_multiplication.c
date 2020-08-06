@@ -74,7 +74,7 @@ void populateMatrix(double *matrix, int rows, int cols, int seed){
     double random_double;
 
     // Initialization of random integers
-    srand(seed);
+    srand((unsigned int)seed);
 
     // Populate matrix
     int i, j;
@@ -108,13 +108,13 @@ void ompPopulateMatrix(double *matrix, int rows, int cols, int seed){
  *     Random seed or default seed
  */
 
-#pragma omp parallel shared(matrix, rows, cols)
+#pragma omp parallel private(matrix, rows, cols)
 {
     // Do not use dynamic threading
     omp_set_dynamic(0);
 
     // Initialization of random integers
-    srand(seed);
+    srand((unsigned int)seed);
 
     // Iterative vars
     int i, j;
