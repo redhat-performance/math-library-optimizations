@@ -17,6 +17,7 @@
 #include <malloc.h>
 #include <ctype.h>
 #include <unistd.h>
+#include <string.h>
 
 #define MAX_MAT_VALUE 100000
 #define CHUNK 10
@@ -90,6 +91,8 @@ void populateMatrix(double *matrix, int rows, int cols, int seed){
     }
 }
 
+#ifdef USE_OPENMP
+
 void ompPopulateMatrix(double *matrix, int rows, int cols, int seed){
 /* Populates a matrix with random values with OpenMP 
  *
@@ -108,7 +111,7 @@ void ompPopulateMatrix(double *matrix, int rows, int cols, int seed){
  *     Random seed or default seed
  */
 
-#pragma omp parallel private(matrix, rows, cols)
+#pragma omp parallel shared(matrix, rows, cols)
 {
     // Do not use dynamic threading
     omp_set_dynamic(0);
@@ -119,15 +122,18 @@ void ompPopulateMatrix(double *matrix, int rows, int cols, int seed){
     // Iterative vars
     int i, j;
 
+    int count = 0;
+
     // Populate matrix
     #pragma omp for 
     for (i=0; i<rows; i++){
         for (j=0; j<cols; j++){
-	    matrix[j + cols * i] = (double)rand() / (double)MAX_MAT_VALUE;
+	    matrix[j + cols * i] = j + cols * i; //(double)rand() / (double)MAX_MAT_VALUE;
 	}
     }
 }
 }
+#endif
 
 void matrixMultiply(double *mat_A, double *mat_B, double *mat_C, int m, int n, int k){
 /* Multiplies matrices 'mat_A' and 'mat_B' to generate 'mat_C'
@@ -185,6 +191,8 @@ void matrixMultiply(double *mat_A, double *mat_B, double *mat_C, int m, int n, i
     }
 };
 
+#ifdef USE_OPENMP
+
 #pragma omp declare simd aligned(mat_A,mat_B,mat_C:ALIGNMENT)
 void ompSIMDMatrixMultiply(double *__restrict__ mat_A, double *__restrict__ mat_B, double *__restrict__ mat_C, int m, int n, int k, int alignment){	
 /* Uses OpenMP to multiply 'mat_A' and 'mat_B' to generate 'mat_C'
@@ -215,11 +223,8 @@ void ompSIMDMatrixMultiply(double *__restrict__ mat_A, double *__restrict__ mat_
     // Iterative vars
     int i, j, h;
 
-    // Temporary index vars
-    int idx_A, idx_B, idx_C;
-
-    // Temporary matrix val for matrix C
-    double mat_value = 0.0;
+    // Temp vars
+    //double mat_A_ih, mat_B_hj;
 
     #pragma omp for
     for (i=0; i<m; i++){
@@ -227,21 +232,34 @@ void ompSIMDMatrixMultiply(double *__restrict__ mat_A, double *__restrict__ mat_
 	// Set matrix value equal to zero to initialize each iteration
         for (j=0; j<k; j++){
 
-	    // Index into matrix C
-	    idx_C = j + i * m;
 
-	    // Temporary value
-	    mat_value = 0.0;
+#ifdef ENABLE_PREFETCH_X86
+	    double mat_C_ij;
+	    memset(&mat_C_ij, 0.0, sizeof(double));
+#endif
 
 	    // Compute the matrix multiplication
             for (h=0; h<n; h++){
-		idx_A = h + i * n;
-                idx_B = j + h * k;
-                mat_value += mat_A[idx_A] * mat_B[idx_B];
-	    }
+#ifdef ENABLE_PREFETCH_X86
+		double mat_A_ih, mat_B_hj;
+	        memcpy(&mat_A_ih, &mat_A[h + i * n], sizeof(double));
+	        memcpy(&mat_B_hj, &mat_B[j + h * k], sizeof(double));
+		double matmul_val = mat_C_ij + mat_A_ih * mat_B_hj;
+	        memcpy(&mat_C_ij, &matmul_val, sizeof(double));
 
-	    // Populate the matrix
-	    mat_C[idx_C] = mat_value;
+                __builtin_prefetch(&mat_A[h + i * n + 1], 0, 1);
+                __builtin_prefetch(&mat_B[j + (h+1) * k], 0, 1);
+#else
+		double mat_A_ih = mat_A[h + i * n];
+		double mat_B_hj = mat_B[j + h * k];
+		mat_C[j + i * m] = mat_C[j + i * m] + mat_A_ih * mat_B_hj;
+#endif
+                
+	    }
+#ifdef ENABLE_PREFETCH_X86
+	    memcpy(&mat_C_ij, &mat_C[j + i * m], sizeof(double));
+            __builtin_prefetch(&mat_C[j + 1 + i * m], 0, 1);
+#endif
 	}
     }
 }
@@ -308,6 +326,8 @@ void ompMatrixMultiply(double *mat_A, double *mat_B, double *mat_C, int m, int n
 }
 };
 
+#endif
+
 double resetMatrix(double *matrix_to_reset, int width, int height){
 /* Resets a matrix by setting all its values to zero.
  *
@@ -328,7 +348,6 @@ double resetMatrix(double *matrix_to_reset, int width, int height){
     int col;
 
     // Clear matrix
-    #pragma omp for collapse(2)
     for (row=0; row<width; row++){
         for (col=0; col<height; col++){
 	    matrix_to_reset[col*width + row] = 0.0;
@@ -359,12 +378,9 @@ double computeStandardDev(double *all_timings, int num_runs, double avg_time){
     // Initialize iteration var
     int i;
 
-    // Get number of threads being used
-    double num_omp_threads_used = (double)omp_get_num_threads();
-
     // Compute cumulative sum
     for (i=0; i<num_runs; i++)
-	cumulative_sum = cumulative_sum + (double)pow((all_timings[i] - avg_time) / (double)(num_runs * num_omp_threads_used), 2);
+	cumulative_sum = cumulative_sum + (double)pow((all_timings[i] - avg_time) / (double)(num_runs), 2);
 
     // Compute variance
     variance = cumulative_sum / (double)(num_runs);
@@ -493,7 +509,7 @@ int main(int argc, char *argv[]){
     else
 	printf("    %d bytes\n\n", ALIGNMENT);
 
-
+#ifdef USE_OPENMP
 #ifdef UNALIGNED
 
     // Print number of iterations
@@ -603,12 +619,24 @@ int main(int argc, char *argv[]){
     // Setup array to hold all timing data
     aligned_omp_run_timings = (double*)malloc(num_iterations * sizeof(double));
 
+
+    //print
+    /* XXX REMOVE
+    printf("Matrix A:\n");
+    printMatrix(omp_aligned_matrix_A, m, n);
+    printf("\nMatrix B:\n");
+    printMatrix(omp_aligned_matrix_A, n, k);
+    */
+
     // Matrix multiply
     for (i=0; i<num_iterations; i++){
 		
         clock_gettime(CLOCK_REALTIME, &start_time);
         ompSIMDMatrixMultiply(omp_aligned_matrix_A, omp_aligned_matrix_B, omp_aligned_matrix_C, m, n, k, ALIGNMENT);
 	clock_gettime(CLOCK_REALTIME, &end_time);
+
+    //printf("\nMatrix C:\n");
+    //printMatrix(omp_aligned_matrix_C, m, k);
 
         // Compute elapsed time
         aligned_elapsed_time = 0.0;
@@ -638,6 +666,7 @@ int main(int argc, char *argv[]){
     printf("  >> Total runtime : %0.3f sec\n", total_aligned_elapsed_time);
     printf("  >> Average runtime overall (per run) : %0.2f +/- %0.2f sec\n", avg_aligned_elapsed_time, aligned_standard_dev);
 
+#endif
 #endif
 
 #ifdef NO_OPENMP
