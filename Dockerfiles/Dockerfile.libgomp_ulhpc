@@ -1,0 +1,26 @@
+FROM registry.access.redhat.com/ubi8:latest
+MAINTAINER Courtney Pacheco <cpacheco@redhat.com>
+
+# Set vars
+ENV LIBGOMP_SCRIPTS /opt/libgomp-scripts
+
+# Set installed packages
+RUN dnf -y install gcc \
+                   gcc-c++ \
+                   git \
+                   libgomp \
+                   make \
+                   wget && \
+    dnf clean all && \
+    rm -rf /var/cache/dnf*
+
+# Copy relevant files
+RUN mkdir -p ${LIBGOMP_SCRIPTS}
+COPY ../src/libgomp/scripts ${LIBGOMP_SCRIPTS}
+
+# Setup ULHPC
+RUN cd ${LIBGOMP_SCRIPTS} && \
+    ./download_and_setup_ulhpc.sh
+
+# Set workdir
+WORKDIR /root/tutorials/HPL/hpcg-3.0/build
