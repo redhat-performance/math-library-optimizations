@@ -41,4 +41,4 @@ $ ./bin/xhpcg <nx> <ny> <nz> <desired-runtime>
 $ #e.g., ./bin/xhpcg 280 280 280 1800
 ```
 
-The `nx`, `ny`, and `nz` represent the global problem size in the x, y, and x dimensions. Ideally, you want official runtimes to be >1800s. (For more information, [see this pdf](https://www.hpcg-benchmark.org/downloads/sc19/HPCG-AMD-Lulu.pdf) from AMD.)
+The `nx`, `ny`, and `nz` represent the global problem size in the x, y, and z dimensions. Ideally, you want official runtimes to be >1800s. (For more information, [see this pdf](https://www.hpcg-benchmark.org/downloads/sc19/HPCG-AMD-Lulu.pdf) from AMD.)
