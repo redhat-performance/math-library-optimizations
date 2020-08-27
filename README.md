@@ -9,13 +9,13 @@ Repository for testing and analyzing the performance of low-level math libraries
 
 Under each subdirectory (e.g., `src/libgomp`), there is a Makefile. To build the code,
 
-```
+```bash
 $ make -C src/<library>
 ```
 
 To clean the code,
 
-```
+```bash
 $ make -C src/<library> clean
 ```
 
@@ -26,11 +26,27 @@ Replace `<library>` with an existing library -- e.g., `libgomp`
 
 This repository contains Dockerfiles for running various benchmarks. To build,
 
-```
+```bash
 $ podman build -f Dockerfiles/Dockerfile.<name> .
 ```
 
 The `WORKDIR` value is set to the directory where the benchmarks should be run. You shouldn't need to change directories.
+
+Note that if you're using the custom libgomp podman build, you should run `scripts/setup_gcc_volume.sh` first to prepare the custom libraries for mounting in the container.
+
+Once that is done, you can run the image
+
+```bash
+$ podman run -v /tmp/gcc-podman-mnt:/gcc:z ${IMAGE_NAME_OR_ID} /bin/bash
+```
+
+Make sure to run `run_me_first.sh` before continuing with anything. (This script is the only script in the current working directory.) This script will prepare the libgomp benchmarks build for you. i.e., you should run the script like so:
+
+```bash
+$ . ./run_me_first.sh
+```
+
+Running this script will setup your gcc/libgomp build, and it will change you to the appropriate directory for running the benchmarks.
 
 ## libgomp
 

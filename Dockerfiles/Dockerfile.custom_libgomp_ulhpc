@@ -1,0 +1,22 @@
+FROM registry.access.redhat.com/ubi8:latest
+MAINTAINER Courtney Pacheco <cpacheco@redhat.com>
+
+# Set vars
+ENV LIBGOMP_SCRIPTS /opt/libgomp-scripts
+ENV PREP_SCRIPTS /opt/ulhpc-prep
+
+# Copy relevant utility files
+RUN mkdir -p ${LIBGOMP_SCRIPTS} && mkdir -p ${PREP_SCRIPTS}
+COPY ../src/libgomp/scripts ${LIBGOMP_SCRIPTS}
+COPY scripts/prep_ulhpc.sh ${PREP_SCRIPTS}/run_me_first.sh
+
+# Set installed packages
+RUN dnf -y install git \
+                   make \
+                   rsync \
+                   wget && \
+    dnf clean all && \
+    rm -rf /var/cache/dnf*
+
+# Set workdir
+WORKDIR ${PREP_SCRIPTS}
